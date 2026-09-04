@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>股票即時訊號分析</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+  * { box-sizing: border-box; }
+  body { margin:0; background:#0B0F14; color:#E8EDF2; font-family:'IBM Plex Sans',sans-serif; }
+  .app { max-width: 1100px; margin: 0 auto; padding: 28px; }
+  h1 { font-family:'IBM Plex Mono',monospace; font-size:22px; margin:0 0 4px 0; }
+  .subtitle { color:#8496A6; font-size:13px; margin:0 0 20px 0; }
+  .panel { background:#131A22; border:1px solid #26323C; border-radius:10px; padding:18px; margin-bottom:20px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input { background:#0B0F14; border:1px solid #26323C; color:#E8EDF2; border-radius:6px; padding:9px 12px; font-family:'IBM Plex Mono',monospace; font-size:13px; width:200px; }
+  button { border:1px solid #26323C; background:#1B2530; color:#E8EDF2; border-radius:6px; padding:9px 16px; font-size:13px; cursor:pointer; font-family:'IBM Plex Sans',sans-serif; }
+  button:hover { background:#232F3B; }
+  .btn-primary { background:#4FA8E0; color:#0B0F14; border-color:#4FA8E0; font-weight:600; }
+  .btn-primary:hover { background:#6bb8e6; }
+  .err { color:#FF5C5C; font-size:13px; margin-top:8px; }
+  .quote-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:14px; margin-top:6px; }
+  .quote-item { background:#0B0F14; border:1px solid #26323C; border-radius:8px; padding:10px 12px; }
+  .quote-item .label { color:#8496A6; font-size:11px; margin-bottom:4px; }
+  .quote-item .value { font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; }
+  .price-hero { display:flex; align-items:baseline; gap:12px; margin-bottom:14px; }
+  .price-hero .price { font-family:'IBM Plex Mono',monospace; font-size:34px; font-weight:700; }
+  .price-hero .change { font-family:'IBM Plex Mono',monospace; font-size:16px; font-weight:600; }
+  .up { color:#3DDC84; } .down { color:#FF5C5C; } .flat { color:#8496A6; }
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px; }
+  @media (max-width:760px){ .grid-2{grid-template-columns:1fr;} }
+  .card { background:#131A22; border:1px solid #26323C; border-radius:10px; padding:20px; }
+  .card h3 { margin:0 0 2px 0; font-size:16px; }
+  .card .sub { margin:0 0 14px 0; color:#8496A6; font-size:12px; }
+  .gauge-wrap { display:flex; flex-direction:column; align-items:center; padding:8px 0 12px 0; }
+  .gauge-arc { position:relative; width:160px; height:80px; overflow:hidden; }
+  .gauge-arc::before { content:""; position:absolute; top:0; left:0; width:160px; height:160px; border-radius:50%;
+    background:conic-gradient(from 180deg,#D93636 0deg,#FF5C5C 30deg,#F0954A 60deg,#F5B942 90deg,#7FCB8B 120deg,#3DDC84 150deg,#1DB954 180deg,transparent 180deg); }
+  .gauge-needle { position:absolute; bottom:0; left:78px; width:4px; height:72px; transform-origin:bottom center; border-radius:2px; }
+  .gauge-hub { position:absolute; bottom:-6px; left:68px; width:24px; height:24px; border-radius:50%; background:#131A22; border:3px solid #26323C; }
+  .gauge-readout { font-weight:700; font-size:15px; margin-top:6px; }
+  .gauge-score { font-family:'IBM Plex Mono',monospace; color:#8496A6; font-size:12px; margin-top:2px; }
+  .reason-list { margin:10px 0 0 0; padding-left:18px; color:#C3CDD6; font-size:13px; line-height:1.9; }
+  .chart-card { background:#131A22; border:1px solid #26323C; border-radius:10px; padding:18px; margin-bottom:20px; }
+  .chart-card h3 { margin:0 0 4px 0; font-size:15px; }
+  .chart-card .sub { margin:0 0 12px 0; color:#8496A6; font-size:12px; }
+  .backtest-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:14px; }
+  .stat { background:#0B0F14; border:1px solid #26323C; border-radius:8px; padding:12px; text-align:center; }
+  .stat .num { font-family:'IBM Plex Mono',monospace; font-size:20px; font-weight:700; }
+  .stat .lbl { color:#8496A6; font-size:11px; margin-top:4px; }
+  .note { color:#8496A6; font-size:12px; margin-top:14px; line-height:1.7; }
+  .watchlist { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .chip { background:#0B0F14; border:1px solid #26323C; border-radius:20px; padding:6px 12px; font-size:12px; display:flex; gap:6px; align-items:center; cursor:pointer; }
+  .chip:hover { border-color:#4FA8E0; }
+  .loading { color:#8496A6; font-size:13px; padding:20px; text-align:center; }
+  .subchart-wrap { margin-bottom:18px; }
+  .subchart-wrap:last-child { margin-bottom:0; }
+  .subchart-title { color:#8496A6; font-size:12px; margin-bottom:6px; }
+
+  /* 代號輸入自動建議 */
+  .input-wrap { position:relative; }
+  .suggest-box { display:none; position:absolute; top:calc(100% + 4px); left:0; width:300px; max-height:280px; overflow-y:auto;
+    background:#131A22; border:1px solid #26323C; border-radius:8px; z-index:50; box-shadow:0 8px 20px rgba(0,0,0,0.45); }
+  .suggest-box.open { display:block; }
+  .suggest-item { padding:8px 12px; display:flex; gap:8px; align-items:baseline; cursor:pointer; font-size:13px; border-bottom:1px solid #1B242D; }
+  .suggest-item:last-child { border-bottom:none; }
+  .suggest-item:hover, .suggest-item.active { background:#1B2530; }
+  .suggest-symbol { font-family:'IBM Plex Mono',monospace; color:#4FA8E0; font-weight:600; white-space:nowrap; }
+  .suggest-name { color:#C3CDD6; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .suggest-exchange { margin-left:auto; color:#8496A6; font-size:11px; white-space:nowrap; }
+
+  /* 建議買入／賣出按鈕 + 掃描結果 modal */
+  .btn-buy { border-color:#1DB954; color:#3DDC84; }
+  .btn-buy:hover { background:#132018; }
+  .btn-sell { border-color:#FF5C5C; color:#FF5C5C; }
+  .btn-sell:hover { background:#241315; }
+
+  .modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:100;
+    align-items:flex-start; justify-content:center; padding:40px 20px; overflow-y:auto; }
+  .modal-overlay.open { display:flex; }
+  .modal-box { background:#131A22; border:1px solid #26323C; border-radius:10px; padding:22px; max-width:820px; width:100%; }
+  .modal-box h2 { margin:0; font-size:18px; display:inline-block; }
+  .modal-box .sub { color:#8496A6; font-size:12px; margin:6px 0 16px 0; }
+  .modal-close { float:right; cursor:pointer; color:#8496A6; font-size:20px; line-height:1; background:none; border:none; padding:0; }
+  .modal-close:hover { color:#E8EDF2; }
+  .scan-section h4 { margin:16px 0 8px 0; font-size:14px; color:#8496A6; }
+  .scan-timeframe { border-top:1px solid #26323C; padding-top:14px; margin-top:14px; }
+  .scan-timeframe:first-child { border-top:none; padding-top:0; margin-top:0; }
+  .scan-timeframe-title { margin:0; font-size:16px; color:#E8EDF2; }
+  .scan-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .scan-table th, .scan-table td { padding:6px 8px; text-align:left; border-bottom:1px solid #1B242D; }
+  .scan-table th { color:#8496A6; font-weight:500; font-size:11px; }
+  .scan-score { font-family:'IBM Plex Mono',monospace; font-weight:700; }
+  .scan-ticker { font-family:'IBM Plex Mono',monospace; color:#4FA8E0; cursor:pointer; }
+  .scan-ticker:hover { text-decoration:underline; }
+  .scan-empty { color:#8496A6; font-size:13px; padding:8px 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>📊 股票即時訊號分析</h1>
+  <p class="subtitle">即時連線 Yahoo Finance — 短期 + 中長期自動訊號分析，並可回測策略歷史表現</p>
+
+  <div class="panel">
+    <div class="row">
+      <div class="input-wrap">
+        <input id="tickerInput" placeholder="股票代號或名稱（例如 AAPL / 0700.HK / 中國）" autocomplete="off" />
+        <div id="suggestBox" class="suggest-box"></div>
+      </div>
+      <button class="btn-primary" onclick="loadAll()">分析</button>
+      <button onclick="addToWatchlist()">＋加入追蹤清單</button>
+      <button class="btn-buy" onclick="openScanModal('buy')">📈 建議買入清單</button>
+      <button class="btn-sell" onclick="openScanModal('sell')">📉 建議賣出清單</button>
+    </div>
+    <div id="err" class="err"></div>
+    <div id="watchlist" class="watchlist"></div>
+  </div>
+
+  <div id="content"></div>
+</div>
+
+<div id="scanModal" class="modal-overlay" onclick="if(event.target===this) closeScanModal();">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeScanModal()">✕</button>
+    <h2 id="scanTitle">建議買入清單</h2>
+    <p class="sub" id="scanSub">正在掃描精選港股／美股清單…</p>
+    <div id="scanBody">
+      <div class="loading">正在掃描，請稍候…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = "";
+const charts = {};
+
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); charts[id] = null; } }
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `請求失敗 (${res.status})`);
+  }
+  return res.json();
+}
+
+async function fetchJSONSafe(url) {
+  try { return await fetchJSON(url); } catch (e) { return { error: e.message }; }
+}
+
+function fmt(n, d = 2) { return (n === null || n === undefined || Number.isNaN(n)) ? "—" : Number(n).toLocaleString(undefined, {maximumFractionDigits:d}); }
+
+function scoreColor(score) {
+  if (score >= 60) return "#1DB954";
+  if (score >= 30) return "#3DDC84";
+  if (score >= 10) return "#7FCB8B";
+  if (score > -10) return "#F5B942";
+  if (score > -30) return "#F0954A";
+  if (score > -60) return "#FF5C5C";
+  return "#D93636";
+}
+
+function gaugeHTML(score, label) {
+  const angle = Math.max(-90, Math.min(90, (score/100)*90));
+  const color = scoreColor(score);
+  return `
+    <div class="gauge-wrap">
+      <div class="gauge-arc">
+        <div class="gauge-needle" style="transform:rotate(${angle}deg); background:${color};"></div>
+        <div class="gauge-hub"></div>
+      </div>
+      <div class="gauge-readout" style="color:${color};">${label}</div>
+      <div class="gauge-score">綜合分數 ${score.toFixed(0)}</div>
+    </div>`;
+}
+
+function reasonListHTML(reasons) {
+  return `<ul class="reason-list">${reasons.map(r => `<li>${r}</li>`).join("")}</ul>`;
+}
+
+async function loadWatchlist() {
+  const data = await fetchJSON(`${API}/api/watchlist`);
+  const el = document.getElementById("watchlist");
+  el.innerHTML = data.watchlist.map(t =>
+    `<span class="chip" onclick="document.getElementById('tickerInput').value='${t}';loadAll();">${t}</span>`
+  ).join("") + (data.watchlist.length ? "" : `<span style="color:#8496A6;font-size:12px;">尚未加入追蹤股票（背景排程每 ${data.poll_interval_minutes} 分鐘掃描一次並推送 Telegram）</span>`);
+}
+
+async function addToWatchlist() {
+  const ticker = document.getElementById("tickerInput").value.trim();
+  if (!ticker) return;
+  await fetch(`${API}/api/watchlist`, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({action:"add", ticker}),
+  });
+  loadWatchlist();
+}
+
+// ---------------------------------------------------------------------------
+// 代號輸入自動建議
+// ---------------------------------------------------------------------------
+let searchDebounce = null;
+const tickerInputEl = document.getElementById("tickerInput");
+const suggestBoxEl = document.getElementById("suggestBox");
+
+tickerInputEl.addEventListener("input", () => {
+  const q = tickerInputEl.value.trim();
+  clearTimeout(searchDebounce);
+  if (!q) { closeSuggestions(); return; }
+  searchDebounce = setTimeout(() => runSearch(q), 200);
+});
+
+tickerInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeSuggestions();
+  if (e.key === "Enter") closeSuggestions();
+});
+
+document.addEventListener("click", (e) => {
+  if (!suggestBoxEl.contains(e.target) && e.target !== tickerInputEl) closeSuggestions();
+});
+
+async function runSearch(q) {
+  try {
+    const data = await fetchJSON(`${API}/api/search?q=${encodeURIComponent(q)}`);
+    renderSuggestions(data.results || []);
+  } catch (e) {
+    closeSuggestions();
+  }
+}
+
+function renderSuggestions(results) {
+  if (!results.length) { closeSuggestions(); return; }
+  suggestBoxEl.innerHTML = results.map(r => `
+    <div class="suggest-item" onclick="selectSuggestion('${r.ticker}')">
+      <span class="suggest-symbol">${r.ticker}</span>
+      <span class="suggest-name">${r.name}（${r.name_en}）</span>
+      <span class="suggest-exchange">${r.market === "HK" ? "港股" : "美股"}</span>
+    </div>`).join("");
+  suggestBoxEl.classList.add("open");
+}
+
+function closeSuggestions() {
+  suggestBoxEl.classList.remove("open");
+  suggestBoxEl.innerHTML = "";
+}
+
+function selectSuggestion(ticker) {
+  tickerInputEl.value = ticker;
+  closeSuggestions();
+  loadAll();
+}
+
+// ---------------------------------------------------------------------------
+// 建議買入／賣出清單 modal
+// ---------------------------------------------------------------------------
+function scanRowHTML(s) {
+  const scoreColorHex = scoreColor(s.score);
+  return `
+    <tr>
+      <td class="scan-ticker" onclick="pickFromScan('${s.ticker}')">${s.ticker}</td>
+      <td>${s.name}</td>
+      <td>${s.market === "HK" ? "港股" : "美股"}</td>
+      <td>${fmt(s.price)}</td>
+      <td class="scan-score" style="color:${scoreColorHex}">${s.score.toFixed(0)}</td>
+      <td>${s.label}</td>
+    </tr>`;
+}
+
+function scanTableHTML(title, list) {
+  if (!list.length) return `<div class="scan-section"><h4>${title}</h4><div class="scan-empty">暫時冇符合條件嘅股票</div></div>`;
+  return `
+    <div class="scan-section">
+      <h4>${title}（${list.length}）</h4>
+      <table class="scan-table">
+        <thead><tr><th>代號</th><th>名稱</th><th>市場</th><th>現價</th><th>分數</th><th>訊號</th></tr></thead>
+        <tbody>${list.map(scanRowHTML).join("")}</tbody>
+      </table>
+    </div>`;
+}
+
+async function openScanModal(type) {
+  const modal = document.getElementById("scanModal");
+  const title = document.getElementById("scanTitle");
+  const sub = document.getElementById("scanSub");
+  const body = document.getElementById("scanBody");
+  title.textContent = type === "buy" ? "📈 建議買入清單" : "📉 建議賣出清單";
+  sub.textContent = "正在掃描精選港股／美股清單…";
+  body.innerHTML = `<div class="loading">正在掃描，請稍候（需要逐一讀取歷史數據，可能要十幾秒）…</div>`;
+  modal.classList.add("open");
+
+  try {
+    const data = await fetchJSON(`${API}/api/scan?type=${type}`);
+    sub.textContent = `已掃描 ${data.scanned_count}／${data.universe_count} 隻精選股票 ｜ ${data.note}`;
+    body.innerHTML = `
+      <div class="scan-timeframe">
+        <h3 class="scan-timeframe-title">⚡ 短線${type === "buy" ? "值得買入" : "值得賣出"}</h3>
+        ${scanTableHTML("港股", data.short_term.hk) + scanTableHTML("美股", data.short_term.us)}
+      </div>
+      <div class="scan-timeframe">
+        <h3 class="scan-timeframe-title">🏔️ 長期${type === "buy" ? "值得買入" : "值得賣出"}</h3>
+        ${scanTableHTML("港股", data.long_term.hk) + scanTableHTML("美股", data.long_term.us)}
+      </div>`;
+  } catch (e) {
+    sub.textContent = "";
+    body.innerHTML = `<div class="err">${e.message}</div>`;
+  }
+}
+
+function closeScanModal() {
+  document.getElementById("scanModal").classList.remove("open");
+}
+
+function pickFromScan(ticker) {
+  closeScanModal();
+  tickerInputEl.value = ticker;
+  loadAll();
+}
+
+async function loadAll() {
+  const ticker = document.getElementById("tickerInput").value.trim();
+  const errEl = document.getElementById("err");
+  const content = document.getElementById("content");
+  errEl.textContent = "";
+  if (!ticker) { errEl.textContent = "請先輸入股票代號"; return; }
+  content.innerHTML = `<div class="loading">正在連線 Yahoo Finance 讀取數據…</div>`;
+
+  try {
+    const [quote, signals, backtest, overview] = await Promise.all([
+      fetchJSON(`${API}/api/quote/${ticker}`),
+      fetchJSON(`${API}/api/signals/${ticker}`),
+      fetchJSONSafe(`${API}/api/backtest/${ticker}`),
+      fetchJSONSafe(`${API}/api/overview/${ticker}`),
+    ]);
+    render(quote, signals, backtest, overview);
+  } catch (e) {
+    content.innerHTML = "";
+    errEl.textContent = e.message;
+  }
+}
+
+function overallStripHTML(overview) {
+  if (!overview || overview.error || !overview.overall) return "";
+  const o = overview.overall;
+  const color = scoreColor(o.score);
+  const pos = overview.position;
+  const posHTML = pos ? `
+      <div style="background:#0B0F14;border:1px solid #26323C;border-radius:8px;padding:8px 14px;text-align:center;min-width:120px;">
+        <div style="color:#8496A6;font-size:11px;">建議倉位參考</div>
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:18px;font-weight:700;color:${color};">${pos.suggested_position_pct}%</div>
+      </div>` : "";
+  return `
+    <div class="panel" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+      <div>
+        <div style="color:#8496A6;font-size:12px;margin-bottom:4px;">綜合建議（技術 + 估值 + 財報品質加權）</div>
+        <div style="font-size:22px;font-weight:700;color:${color};">${o.label}　<span style="font-family:'IBM Plex Mono',monospace;font-size:14px;color:#8496A6;">綜合分數 ${o.score.toFixed(0)}</span></div>
+      </div>
+      ${posHTML}
+      <div style="color:#8496A6;font-size:12px;flex:1;min-width:200px;">${o.note}${pos ? "　｜　" + pos.note : ""}</div>
+    </div>`;
+}
+
+function fundamentalCardHTML(overview) {
+  if (!overview || overview.error) {
+    return `<div class="card"><h3>基本面評分（估值｜Graham/Lynch/Dalio）</h3><div class="err">基本面數據暫時無法取得</div></div>`;
+  }
+  const fund = overview.fundamental;
+  if (!fund || fund.insufficient) {
+    return `<div class="card"><h3>基本面評分（估值｜Graham/Lynch/Dalio）</h3><p class="sub">ROE、負債水平、PEG、估值安全邊際、自由現金流品質、營收增長、盈利收益率vs利率</p><div class="err">${(fund && fund.reasons && fund.reasons[0]) || "數據不足"}</div></div>`;
+  }
+  return `
+    <div class="card">
+      <h3>基本面評分（估值｜Graham/Lynch/Dalio）</h3>
+      <p class="sub">ROE、負債水平、PEG、估值安全邊際、自由現金流品質、營收增長、盈利收益率vs利率</p>
+      ${gaugeHTML(fund.score, fund.label)}
+      ${reasonListHTML(fund.reasons)}
+    </div>`;
+}
+
+function qualityCardHTML(overview) {
+  if (!overview || overview.error) {
+    return `<div class="card"><h3>財報品質評分（巴菲特財報學/芒格）</h3><div class="err">財報明細數據暫時無法取得</div></div>`;
+  }
+  const q = overview.quality;
+  if (!q || q.insufficient) {
+    return `<div class="card"><h3>財報品質評分（巴菲特財報學/芒格）</h3><p class="sub">毛利率、SG&A佔比、利息負擔、淨利率、償債年期、多年盈利穩定性</p><div class="err">${(q && q.reasons && q.reasons[0]) || "數據不足"}</div></div>`;
+  }
+  return `
+    <div class="card">
+      <h3>財報品質評分（巴菲特財報學/芒格）</h3>
+      <p class="sub">毛利率、SG&A佔比、利息負擔、淨利率、償債年期、多年盈利穩定性</p>
+      ${gaugeHTML(q.score, q.label)}
+      ${reasonListHTML(q.reasons)}
+    </div>`;
+}
+
+function render(quote, signals, backtest, overview) {
+  const changeClass = quote.change > 0 ? "up" : quote.change < 0 ? "down" : "flat";
+  const arrow = quote.change > 0 ? "▲" : quote.change < 0 ? "▼" : "";
+
+  document.getElementById("content").innerHTML = `
+    ${overallStripHTML(overview)}
+
+    <div class="panel">
+      <div class="price-hero">
+        <div>
+          <div style="color:#8496A6;font-size:13px;">${quote.name || quote.ticker} ・ ${quote.currency || ""}</div>
+          <div class="price">${fmt(quote.price)}</div>
+        </div>
+        <div class="change ${changeClass}">${arrow} ${fmt(quote.change)} (${fmt(quote.change_pct)}%)</div>
+      </div>
+      <div class="quote-grid">
+        <div class="quote-item"><div class="label">開盤</div><div class="value">${fmt(quote.open)}</div></div>
+        <div class="quote-item"><div class="label">昨收</div><div class="value">${fmt(quote.prev_close)}</div></div>
+        <div class="quote-item"><div class="label">日內高</div><div class="value">${fmt(quote.day_high)}</div></div>
+        <div class="quote-item"><div class="label">日內低</div><div class="value">${fmt(quote.day_low)}</div></div>
+        <div class="quote-item"><div class="label">52週高</div><div class="value">${fmt(quote.year_high)}</div></div>
+        <div class="quote-item"><div class="label">52週低</div><div class="value">${fmt(quote.year_low)}</div></div>
+        <div class="quote-item"><div class="label">成交量</div><div class="value">${fmt(quote.volume,0)}</div></div>
+        <div class="quote-item"><div class="label">10日均量</div><div class="value">${fmt(quote.avg_volume_10d,0)}</div></div>
+        <div class="quote-item"><div class="label">市值</div><div class="value">${fmt(quote.market_cap,0)}</div></div>
+        <div class="quote-item"><div class="label">本益比(PE)</div><div class="value">${fmt(quote.pe_ratio)}</div></div>
+        <div class="quote-item"><div class="label">EPS</div><div class="value">${fmt(quote.eps)}</div></div>
+        <div class="quote-item"><div class="label">股息率</div><div class="value">${quote.dividend_yield!=null?fmt(quote.dividend_yield)+"%":"—"}</div></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>短期訊號</h3>
+        <p class="sub">約 5–20 個交易日｜MA5/MA20、RSI(14)、MACD、布林帶、成交量</p>
+        ${gaugeHTML(signals.short.score, signals.short.label)}
+        ${reasonListHTML(signals.short.reasons)}
+      </div>
+      <div class="card">
+        <h3>中長期訊號</h3>
+        <p class="sub">約 2–12 個月｜MA50/MA200、52週高低位、長期趨勢斜率</p>
+        ${gaugeHTML(signals.long.score, signals.long.label)}
+        ${reasonListHTML(signals.long.reasons)}
+      </div>
+    </div>
+
+    <div class="grid-2">
+      ${fundamentalCardHTML(overview)}
+      ${qualityCardHTML(overview)}
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>方法論參考 · 估值</h3>
+        <p class="sub">基本面（估值）評分嘅量化準則來源</p>
+        <ul class="reason-list">
+          <li>ROE / 營運利潤率 — 巴菲特、芒格重視嘅「護城河」與資本回報品質</li>
+          <li>負債權益比 / 流動比率 — 達里奧《債務危機》強調嘅槓桿與償債風險</li>
+          <li>PEG 比率 — 彼得林區《戰勝華爾街》嘅增長估值準則</li>
+          <li>本益比×市淨率 — 葛拉漢《智慧型股票投資人》嘅估值安全邊際</li>
+          <li>自由現金流收益率 — 巴菲特股東信強調嘅 owner earnings 盈利品質</li>
+          <li>營收增長 — 費雪《非常潛力股》重視嘅持續成長能力</li>
+          <li>盈利收益率 vs 10年美債息率 — 呼應利率環境對資產估值嘅影響</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>方法論參考 · 財報品質 / 倉位</h3>
+        <p class="sub">財報品質評分與建議倉位嘅量化準則來源</p>
+        <ul class="reason-list">
+          <li>毛利率 / SG&A佔比 / 利息負擔 — 《巴菲特財報學》嘅持久競爭優勢財報篩選準則</li>
+          <li>多年淨利率波動度 — 芒格《窮查理寶典》「護城河要用多年數據驗證」思維</li>
+          <li>長期負債／年度淨利償還年期 — 財務體質穩健度嘅簡化代理指標</li>
+          <li>建議倉位（半 Kelly 啟發式） — 《戰勝一切市場的人》(Ed Thorp) Kelly Criterion 概念，
+            以綜合分數為優勢代理、年化波動度做風險調整，非正式公式，僅供分散風險參考</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <h3>價格走勢與移動平均線</h3>
+      <canvas id="priceChart" height="90"></canvas>
+    </div>
+
+    <div class="chart-card">
+      <h3>技術指標</h3>
+      <p class="sub">MACD ・ RSI(14) ・ KDJ</p>
+      <div class="subchart-wrap"><div class="subchart-title">MACD</div><canvas id="macdChart" height="70"></canvas></div>
+      <div class="subchart-wrap"><div class="subchart-title">RSI(14)</div><canvas id="rsiChart" height="60"></canvas></div>
+      <div class="subchart-wrap"><div class="subchart-title">KDJ</div><canvas id="kdjChart" height="60"></canvas></div>
+    </div>
+
+    <div class="chart-card">
+      <h3>策略回測（短期訊號｜近 2 年）</h3>
+      ${backtest.error ? `<div class="err">${backtest.error}</div>` : `
+      <div class="backtest-grid">
+        <div class="stat"><div class="num" style="color:${backtest.strategy_return_pct>=0?'#3DDC84':'#FF5C5C'}">${backtest.strategy_return_pct}%</div><div class="lbl">策略總報酬</div></div>
+        <div class="stat"><div class="num">${backtest.buy_hold_return_pct}%</div><div class="lbl">買入持有報酬</div></div>
+        <div class="stat"><div class="num">${backtest.num_trades}</div><div class="lbl">交易次數</div></div>
+        <div class="stat"><div class="num">${backtest.win_rate_pct!=null?backtest.win_rate_pct+'%':'—'}</div><div class="lbl">勝率</div></div>
+      </div>`}
+      <div class="note">${backtest.note || ""}</div>
+      <div class="note">⚠️ 本工具純粹基於歷史價量技術分析，不構成投資建議，股市有風險，請自行判斷並考慮諮詢專業意見。</div>
+    </div>
+  `;
+
+  drawPriceChart(signals.chart);
+  drawIndicatorCharts(signals.chart);
+}
+
+const commonScales = () => ({
+  x: { ticks:{color:"#8496A6",maxTicksLimit:10,font:{size:10}}, grid:{color:"#1B242D"} },
+  y: { ticks:{color:"#8496A6",font:{size:10}}, grid:{color:"#1B242D"} },
+});
+
+function drawPriceChart(chart) {
+  destroyChart("price");
+  const ctx = document.getElementById("priceChart");
+  charts.price = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: chart.map(d => d.date),
+      datasets: [
+        { label:"收盤價", data: chart.map(d=>d.close), borderColor:"#E8EDF2", borderWidth:1.5, pointRadius:0 },
+        { label:"MA20", data: chart.map(d=>d.sma20), borderColor:"#4FA8E0", borderWidth:1.2, pointRadius:0 },
+        { label:"MA50", data: chart.map(d=>d.sma50), borderColor:"#F5B942", borderWidth:1.2, pointRadius:0 },
+        { label:"MA200", data: chart.map(d=>d.sma200), borderColor:"#FF5C5C", borderWidth:1.2, pointRadius:0 },
+      ],
+    },
+    options: { responsive:true, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{labels:{color:"#C3CDD6",font:{size:11}}} }, scales: commonScales() },
+  });
+}
+
+function drawIndicatorCharts(chart) {
+  destroyChart("macd"); destroyChart("rsi"); destroyChart("kdj");
+  const labels = chart.map(d => d.date);
+
+  charts.macd = new Chart(document.getElementById("macdChart"), {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { type:"line", label:"MACD", data: chart.map(d=>d.macd), borderColor:"#4FA8E0", borderWidth:1.2, pointRadius:0 },
+        { type:"line", label:"Signal", data: chart.map(d=>d.macd_signal), borderColor:"#F5B942", borderWidth:1.2, pointRadius:0 },
+        { type:"bar", label:"Histogram", data: chart.map(d=>d.macd_hist),
+          backgroundColor: chart.map(d => (d.macd_hist||0) >= 0 ? "rgba(61,220,132,0.5)" : "rgba(255,92,92,0.5)") },
+      ],
+    },
+    options: { responsive:true, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{labels:{color:"#C3CDD6",font:{size:10}}} }, scales: commonScales() },
+  });
+
+  charts.rsi = new Chart(document.getElementById("rsiChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label:"RSI(14)", data: chart.map(d=>d.rsi14), borderColor:"#4FA8E0", borderWidth:1.3, pointRadius:0 },
+        { label:"超買(70)", data: labels.map(()=>70), borderColor:"#FF5C5C", borderWidth:1, pointRadius:0, borderDash:[4,4] },
+        { label:"超賣(30)", data: labels.map(()=>30), borderColor:"#3DDC84", borderWidth:1, pointRadius:0, borderDash:[4,4] },
+      ],
+    },
+    options: { responsive:true, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{labels:{color:"#C3CDD6",font:{size:10}}} },
+      scales: { ...commonScales(), y:{...commonScales().y, min:0, max:100} } },
+  });
+
+  charts.kdj = new Chart(document.getElementById("kdjChart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        { label:"K", data: chart.map(d=>d.kdj_k), borderColor:"#4FA8E0", borderWidth:1.2, pointRadius:0 },
+        { label:"D", data: chart.map(d=>d.kdj_d), borderColor:"#F5B942", borderWidth:1.2, pointRadius:0 },
+        { label:"J", data: chart.map(d=>d.kdj_j), borderColor:"#3DDC84", borderWidth:1.2, pointRadius:0 },
+      ],
+    },
+    options: { responsive:true, interaction:{mode:"index",intersect:false},
+      plugins:{ legend:{labels:{color:"#C3CDD6",font:{size:10}}} }, scales: commonScales() },
+  });
+}
+
+loadWatchlist();
+</script>
+</body>
+</html>
